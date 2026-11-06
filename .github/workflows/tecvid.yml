@@ -1,0 +1,36 @@
+name: Tecvid modeli (ONNX) yayınla
+on:
+  workflow_dispatch:
+  push:
+    paths: ['tecvid/**']
+permissions:
+  contents: write
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - name: Kütüphaneler
+        run: |
+          pip install torch --index-url https://download.pytorch.org/whl/cpu
+          pip install "transformers==4.56.2" quran-muaalem onnx onnxscript
+      - name: Dönüştür (fp32 -> int16 / int8, sherpa-onnx sarmalayıcı)
+        working-directory: tecvid
+        run: |
+          python export.py
+          python wq.py int16
+          python wq.py int8
+          python wrap.py int16
+          python wrap.py int8
+          cp tokens.txt tecvid-tokens.txt
+          ls -la
+      - name: Yayınla
+        working-directory: tecvid
+        env: { GH_TOKEN: '${{ github.token }}' }
+        run: |
+          gh release delete tecvid-v1 -y --cleanup-tag || true
+          printf 'Kuran Muaalem tecvid modeli (obadx/muaalem-model-v3_2, MIT lisansı, arXiv 2509.00094) — sherpa-onnx için ONNX.\nint16: orijinalle birebir aynı sonuç (1,2 GB). int8: küçük (670 MB).\n' > notes.txt
+          gh release create tecvid-v1 -t "Tecvid modeli v1" -F notes.txt tecvid-tokens.txt mua_int8.onnx muaalem_int8.data mua_int16.onnx muaalem_int16.data
